@@ -2,7 +2,7 @@ import pandas as pd
 import ccxt
 from datetime import timedelta
 
-def download_crypto_ohlc_data(exchange='bybit', symbols=None, timeframe='1d', since=None, periods=365):
+def download_crypto_ohlc_data(exchange='bybit', symbols=None, timeframe='1d', since=None, periods=365, save_csv=False):
     # Initialize exchange
     print(f"Initializing data download for: {exchange}, Timeframe: {timeframe}, Periods: {periods}...")
     exchange = getattr(ccxt, exchange)({'enableRateLimit': True})
@@ -47,7 +47,8 @@ def download_crypto_ohlc_data(exchange='bybit', symbols=None, timeframe='1d', si
     combined_df = pd.concat(ohlc_data, axis=1)
 
     # Save to CSV
-    combined_df.to_csv("all_perpetuals_ohlc_data.csv")
+    if save_csv:
+        combined_df.to_csv("all_perpetuals_ohlc_data.csv")
 
     print(f'Finished downloading data for {len(ohlc_data)} symbols')
 
