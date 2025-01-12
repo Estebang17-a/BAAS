@@ -3,75 +3,86 @@ import numpy as np
 
 ### Trendline checking algorithm using gradiendt descent ###
 
-def check_trendline(support: bool, pivot: int, slope: float, y: np.array):
-
+### Trendline checking algorithm using gradient descent ###
+def check_trendline(support: bool, pivot: int, slope: float, y: np.array, tolerance: float = 1e-5) -> float:
+    """
+    Check if a trendline is valid and calculate its error.
+    
+    Args:
+        support: Whether this is a support line (True) or resistance line (False)
+        pivot: Index of the pivot point
+        slope: Slope of the line
+        y: Array of y-values
+        tolerance: Tolerance for line validity check
+        
+    Returns:
+        float: Error value if valid, -1 if invalid
+    """
     # Find the intercept of the line going through pivot point with given slope
     intercept = -slope * pivot + y[pivot]
     line_vals = slope * np.arange(len(y)) + intercept
-
     diffs = line_vals - y
-
-    # Check to see if the line is valid, return -1 if it's not valid
-    if support and diffs.max() > 1e-5:
-        return -1.0
-    elif not support and diffs.min() < 1e-5:
-        return -1.0
     
+    # Check to see if the line is valid, return -1 if it's not valid
+    if support and diffs.max() > tolerance:
+        return -1.0
+    elif not support and diffs.min() < -tolerance:
+        return -1.0
+        
     # Squared sum of diffs between data and line
     err = (diffs ** 2).sum()
     return err
 
-def optimize_slope(support: bool, pivot: int, init_slope: float, y: np.array):
-
+def optimize_slope(support: bool, pivot: int, init_slope: float, y: np.array) -> tuple[float, float]:
     # Amount to change slope by, multiplied by opt_step
     slope_unit = (y.max() - y.min()) / len(y)
-
+    
     # Optimization variables
     opt_step = 1.0
     min_step = 0.0001
     current_step = opt_step
-
+    
     # Initiate at the slope of the line of best fit
     best_slope = init_slope
     best_error = check_trendline(support, pivot, init_slope, y)
-    assert(best_error >= 0.0) # Shouldn't ever fail with initial slope
-
+    assert best_error >= 0.0  # Shouldn't ever fail with initial slope
+    
     get_derivative = True
     derivative = None
+    
     while current_step > min_step:
         if get_derivative:
-            #Numerical differentiation, increase slope by very small amount
+            # Numerical differentiation, increase slope by very small amount
             # To see if error increases or decreases
             # That gives us the direction to change the slope
             slope_change = best_slope + slope_unit * min_step
             test_error = check_trendline(support, pivot, slope_change, y)
             derivative = best_error - test_error
-
+            
             # If increasing by a small amount fails, try decreasing by a small amount
             if test_error < 0.0:
                 slope_change = best_slope - slope_unit * min_step
                 test_error = check_trendline(support, pivot, slope_change, y)
                 derivative = best_error - test_error
-
-            if test_error < 0.0: # Derivative failed, pass
-                raise Exception("Derivative failed - check the data. ")
-            
+                if test_error < 0.0:  # Derivative failed, pass
+                    raise Exception("Derivative failed - check the data.")
             get_derivative = False
-        
-        if get_derivative > 0.0: # Increasing slope increased error
+            
+        if derivative > 0.0:  # Increasing slope increased error
             test_slope = best_slope - slope_unit * current_step
-        else: # Increasing slope decreased error
+        else:  # Increasing slope decreased error
             test_slope = best_slope + slope_unit * current_step
-
+            
         test_error = check_trendline(support, pivot, test_slope, y)
+        
         if test_error < 0 or test_error >= best_error:
             # Slope failed, didn't reduce error
             current_step *= 0.5
-        else: # Test slope reduced error
+        else:  # Test slope reduced error
             best_error = test_error
             best_slope = test_slope
             get_derivative = True
-
+            
     # Optimization done, return best slope and intercept
     return (best_slope, -best_slope * pivot + y[pivot])
 
