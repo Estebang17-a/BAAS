@@ -1,0 +1,1 @@
+## Esta facil añadir como encontrat el patron, puedo añadir un penalty de por cuan lejos este el trendline del 21ema
