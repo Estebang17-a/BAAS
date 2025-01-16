@@ -54,7 +54,6 @@ def download_crypto_ohlc_data(exchange='bybit', symbols=None, timeframe='1d', si
             try:
                 symbol, df = future.result()
                 if df is not None:
-                    # Ensure we only keep data up to the end_time
                     ohlc_data[symbol] = df
                     if i == 0 or i == len(symbols) - 1:
                         print(f"Data for {symbol}:")
