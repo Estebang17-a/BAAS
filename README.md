@@ -1,6 +1,6 @@
 # Chart Pattern Screener
 
-A powerful chart pattern screening application built with Streamlit that helps you identify trading opportunities in both crypto and equity markets.
+A powerful chart pattern screening application built with Streamlit that helps you identify trading opportunities in both crypto and equity markets, the name is my cat's name.
 
 ## Features
 
