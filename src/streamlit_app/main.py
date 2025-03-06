@@ -71,7 +71,7 @@ def load_market_data():
             combined_data = combine_market_data(crypto_df=crypto_df, equities_df=combined_data)
             
     if "Equities" in market_type:
-        equities_df = equities_data.download_equities_ohlc_data(timeframe=timeframe, periods=30)
+        equities_df = equities_data.download_equities_ohlc_data(timeframe=timeframe, period=30)
         if combined_data is None:
             combined_data = equities_df
         else:
