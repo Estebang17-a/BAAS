@@ -36,19 +36,96 @@ market_type = st.sidebar.multiselect(
     default=["Crypto"]
 )
 
-# Timeframe selection
-timeframe = st.sidebar.selectbox(
-    "Select Timeframe",
-    ["1d", "4h", "1h"],
-    index=0
-)
+# Timeframe and period selection
+st.sidebar.markdown("### Data Retrieval Parameters")
+
+# Equities parameters
+if "Equities" in market_type:
+    st.sidebar.markdown("#### Equities Data")
+    equities_timeframe = st.sidebar.selectbox(
+        "Equities Timeframe",
+        ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1d", "5d", "1wk", "1mo", "3mo"],
+        index=7,  # Default to 1d
+        help="Timeframe for equities data retrieval (yfinance compatible)"
+    )
+    
+    # Add timeframe description
+    timeframe_descriptions = {
+        "1m": "1 minute (max 7 days)",
+        "2m": "2 minutes (max 60 days)",
+        "5m": "5 minutes (max 60 days)",
+        "15m": "15 minutes (max 60 days)",
+        "30m": "30 minutes (max 60 days)",
+        "60m": "1 hour (max 730 days)",
+        "90m": "90 minutes (max 60 days)",
+        "1d": "1 day (unlimited)",
+        "5d": "5 days (unlimited)",
+        "1wk": "1 week (unlimited)",
+        "1mo": "1 month (unlimited)",
+        "3mo": "3 months (unlimited)",
+    }
+    
+    st.sidebar.markdown(f"*{timeframe_descriptions[equities_timeframe]}*")
+    
+    # Period selection based on timeframe type
+    if equities_timeframe in ["1m", "2m", "5m", "15m", "30m", "60m", "90m"]:
+        # For intraday data, we use days as period
+        period_options = ["1d", "5d", "1mo", "3mo"]
+        period_descriptions = {
+            "1d": "1 day",
+            "5d": "5 days",
+            "1mo": "1 month (about 30 days)",
+            "3mo": "3 months (about 90 days)"
+        }
+    else:
+        # For daily and above data, we can use longer periods
+        period_options = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y"]
+        period_descriptions = {
+            "1d": "1 day",
+            "5d": "5 days",
+            "1mo": "1 month",
+            "3mo": "3 months",
+            "6mo": "6 months",
+            "1y": "1 year",
+            "2y": "2 years"
+        }
+    
+    equities_periods = st.sidebar.selectbox(
+        "Equities Period",
+        options=period_options,
+        index=2,  # Default to "1mo"
+        format_func=lambda x: f"{x} ({period_descriptions[x]})",
+        help="Historical data period to retrieve"
+    )
+
+# Crypto parameters
+if "Crypto" in market_type:
+    st.sidebar.markdown("#### Crypto Data")
+    crypto_timeframe = st.sidebar.selectbox(
+        "Crypto Timeframe",
+        ["1d", "4h", "1h", "15m"],
+        index=0,
+        help="Timeframe for crypto data retrieval"
+    )
+    
+    crypto_periods = st.sidebar.slider(
+        "Crypto Candles",
+        min_value=15,
+        max_value=1000,
+        value=100,
+        help="Number of candles to retrieve for crypto data"
+    )
+
+# Analysis parameters
+st.sidebar.markdown("### Analysis Parameters")
 
 # Lookback period
 lookback = st.sidebar.slider(
     "Lookback Period",
     min_value=10,
     max_value=50,
-    value=14
+    value=14,
+    help="Number of candles to analyze for pattern detection"
 )
 
 # EMA period
@@ -56,7 +133,8 @@ ema_period = st.sidebar.slider(
     "EMA Period",
     min_value=5,
     max_value=50,
-    value=21
+    value=21,
+    help="Period for Exponential Moving Average calculation"
 )
 
 def load_market_data():
@@ -64,18 +142,30 @@ def load_market_data():
     combined_data = None
     
     if "Crypto" in market_type:
-        crypto_df = crypto_data.download_crypto_ohlc_data(timeframe=timeframe, periods=30)
-        if combined_data is None:
-            combined_data = crypto_df
-        else:
-            combined_data = combine_market_data(crypto_df=crypto_df, equities_df=combined_data)
+        try:
+            crypto_df = crypto_data.download_crypto_ohlc_data(
+                timeframe=crypto_timeframe, 
+                periods=crypto_periods
+            )
+            if combined_data is None:
+                combined_data = crypto_df
+            else:
+                combined_data = combine_market_data(crypto_df=crypto_df, equities_df=combined_data)
+        except Exception as e:
+            st.sidebar.warning(f"Error loading crypto data: {str(e)}")
             
     if "Equities" in market_type:
-        equities_df = equities_data.download_equities_ohlc_data(timeframe=timeframe, period=30)
-        if combined_data is None:
-            combined_data = equities_df
-        else:
-            combined_data = combine_market_data(crypto_df=combined_data, equities_df=equities_df)
+        try:
+            equities_df = equities_data.download_equities_ohlc_data(
+                timeframe=equities_timeframe, 
+                period=equities_periods
+            )
+            if combined_data is None:
+                combined_data = equities_df
+            else:
+                combined_data = combine_market_data(crypto_df=combined_data, equities_df=equities_df)
+        except Exception as e:
+            st.sidebar.warning(f"Error loading equities data: {str(e)}")
     
     return combined_data
 
