@@ -6,6 +6,14 @@ from plotly.subplots import make_subplots
 import sys
 import os
 
+# Initialize session state variables
+if 'market_data' not in st.session_state:
+    st.session_state.market_data = None
+if 'signal_summary' not in st.session_state:
+    st.session_state.signal_summary = None
+if 'has_run' not in st.session_state:
+    st.session_state.has_run = False
+
 # Add the parent directory to the path to import custom modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import trendline
@@ -329,23 +337,21 @@ def plot_chart(data, symbol, s_tl, r_tl, signals, ema):
     return fig
 
 # Main app logic
-if st.sidebar.button("Run Screening"):
+if st.sidebar.button("Run Screening") or not st.session_state.has_run:
     with st.spinner("Loading market data..."):
         try:
-            market_data = load_market_data()
+            st.session_state.market_data = load_market_data()
             
-            if market_data is not None:
+            if st.session_state.market_data is not None:
                 st.success("Data loaded successfully!")
-                
-                # Create tabs for different views
-                tab1, tab2 = st.tabs(["Charts", "Signals Summary"])
+                st.session_state.has_run = True
                 
                 # Process all symbols first to get signals
                 signal_summary = []
-                symbols = list(market_data.columns.get_level_values(0).unique())
+                symbols = list(st.session_state.market_data.columns.get_level_values(0).unique())
                 
                 for symbol in symbols:
-                    symbol_data = market_data[symbol].copy()
+                    symbol_data = st.session_state.market_data[symbol].copy()
                     _, _, signals, _, _, _ = trendline_breakout_hl(
                         symbol_data, lookback, ema_period
                     )
@@ -359,53 +365,57 @@ if st.sidebar.button("Run Screening"):
                             'Volume': symbol_data['Volume'].iloc[-1]
                         })
                 
-                with tab1:
-                    if signal_summary:
-                        # Create a list of symbols with active signals
-                        active_symbols = [item['Symbol'] for item in signal_summary]
-                        signal_types = {item['Symbol']: item['Signal'] for item in signal_summary}
-                        
-                        # Add signal type to symbol display
-                        symbol_options = [f"{symbol} ({signal_types[symbol]})" for symbol in active_symbols]
-                        
-                        # Symbol selector with signal information
-                        selected_display = st.selectbox(
-                            "Select Symbol (Showing only symbols with active signals)",
-                            options=symbol_options,
-                            format_func=lambda x: x
-                        )
-                        
-                        # Extract symbol from display string
-                        selected_symbol = selected_display.split(' (')[0]
-                        
-                        # Get data for selected symbol
-                        symbol_data = market_data[selected_symbol].copy()
-                        
-                        # Calculate signals
-                        s_tl, r_tl, signals, ema, r_slopes, s_slopes = trendline_breakout_hl(
-                            symbol_data, lookback, ema_period
-                        )
-                        
-                        # Plot chart
-                        fig = plot_chart(symbol_data, selected_symbol, s_tl, r_tl, signals, ema)
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.info("No signals found for the current parameters.")
-                
-                with tab2:
-                    if signal_summary:
-                        signals_df = pd.DataFrame(signal_summary)
-                        st.dataframe(
-                            signals_df.style.apply(
-                                lambda x: ['background-color: lightgreen' if v == 'Buy' else 'background-color: lightcoral' for v in x],
-                                subset=['Signal']
-                            ),
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("No signals found for the current parameters.")
-                        
+                st.session_state.signal_summary = signal_summary
+
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
+            st.session_state.has_run = False
+
+# Create tabs for different views
+tab1, tab2 = st.tabs(["Charts", "Signals Summary"])
+
+# Only show content if we have data
+if st.session_state.market_data is not None and st.session_state.signal_summary:
+    with tab1:
+        # Create a list of symbols with active signals
+        active_symbols = [item['Symbol'] for item in st.session_state.signal_summary]
+        signal_types = {item['Symbol']: item['Signal'] for item in st.session_state.signal_summary}
+        
+        # Add signal type to symbol display
+        symbol_options = [f"{symbol} ({signal_types[symbol]})" for symbol in active_symbols]
+        
+        # Symbol selector with signal information
+        selected_display = st.selectbox(
+            "Select Symbol (Showing only symbols with active signals)",
+            options=symbol_options,
+            format_func=lambda x: x
+        )
+        
+        # Extract symbol from display string
+        selected_symbol = selected_display.split(' (')[0]
+        
+        # Get data for selected symbol
+        symbol_data = st.session_state.market_data[selected_symbol].copy()
+        
+        # Calculate signals
+        s_tl, r_tl, signals, ema, r_slopes, s_slopes = trendline_breakout_hl(
+            symbol_data, lookback, ema_period
+        )
+        
+        # Plot chart
+        fig = plot_chart(symbol_data, selected_symbol, s_tl, r_tl, signals, ema)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with tab2:
+        signals_df = pd.DataFrame(st.session_state.signal_summary)
+        st.dataframe(
+            signals_df.style.apply(
+                lambda x: ['background-color: lightgreen' if v == 'Buy' else 'background-color: lightcoral' for v in x],
+                subset=['Signal']
+            ),
+            use_container_width=True
+        )
+elif st.session_state.has_run:
+    st.info("No signals found for the current parameters.")
 else:
     st.info("Click 'Run Screening' to start the analysis.") 
