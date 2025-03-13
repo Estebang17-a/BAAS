@@ -130,9 +130,9 @@ st.sidebar.markdown("### Analysis Parameters")
 # Lookback period
 lookback = st.sidebar.slider(
     "Lookback Period",
-    min_value=10,
-    max_value=50,
-    value=14,
+    min_value=5,
+    max_value=30,
+    value=7,
     help="Number of candles to analyze for pattern detection"
 )
 
