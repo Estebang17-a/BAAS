@@ -43,7 +43,7 @@ def download_crypto_ohlc_data(exchange='bybit', symbols=None, timeframe='1d', si
 
     if symbols is None:
         markets = exchange.load_markets()
-        symbols = [market for market in markets if market.endswith('USDT')]
+        symbols = [market for market in markets if market.endswith('USDT:USDT')]
         print(f"Downloading data for {len(symbols)} symbols")
 
     ohlc_data = {}
