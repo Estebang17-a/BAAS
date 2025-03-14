@@ -16,13 +16,13 @@ if 'has_run' not in st.session_state:
 
 # Add the parent directory to the path to import custom modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import trendline
+import pullback
 import crypto_data
 import equities_data
 
 # Page config
 st.set_page_config(
-    page_title="Chart Pattern Screener",
+    page_title="B.A.A.S",
     page_icon="📈",
     layout="wide"
 )
@@ -127,15 +127,6 @@ if "Crypto" in market_type:
 # Analysis parameters
 st.sidebar.markdown("### Analysis Parameters")
 
-# Lookback period
-lookback = st.sidebar.slider(
-    "Lookback Period",
-    min_value=5,
-    max_value=30,
-    value=7,
-    help="Number of candles to analyze for pattern detection"
-)
-
 # EMA period
 ema_period = st.sidebar.slider(
     "EMA Period",
@@ -143,6 +134,25 @@ ema_period = st.sidebar.slider(
     max_value=50,
     value=21,
     help="Period for Exponential Moving Average calculation"
+)
+
+# Pullback parameters
+min_pullback_candles = st.sidebar.slider(
+    "Minimum Pullback Candles",
+    min_value=2,
+    max_value=14,
+    value=5,
+    help="Minimum number of candles for pullback pattern"
+)
+
+# Breakout parameters
+breakout_threshold = st.sidebar.slider(
+    "Breakout Threshold (%)",
+    min_value=0.1,
+    max_value=5.0,
+    value=0.5,
+    step=0.1,
+    help="Minimum percentage move required for breakout confirmation"
 )
 
 def load_market_data():
@@ -199,68 +209,12 @@ def combine_market_data(crypto_df=None, equities_df=None):
     
     return combined_df
 
-def trendline_breakout_hl(data: pd.DataFrame, lookback: int, ema_period: int = 21):
-    """Calculate trendline breakouts with specific pattern conditions"""
-    # Calculate EMA
-    data['EMA21'] = data['Close'].ewm(span=ema_period, adjust=False).mean()
-    
-    # Initialize arrays
-    n = len(data)
-    s_tl = np.full(n, np.nan)
-    r_tl = np.full(n, np.nan)
-    signals = np.zeros(n)
-    r_slopes = np.full(n, np.nan)
-    s_slopes = np.full(n, np.nan)
-    
-    for i in range(lookback, n):
-        try:
-            # Get window data
-            window_close = data.iloc[i - lookback:i]['Close'].to_numpy()
-            window_high = data.iloc[i - lookback:i]['High'].to_numpy()
-            window_low = data.iloc[i - lookback:i]['Low'].to_numpy()
-            
-            # Calculate trendlines
-            s_coefs, r_coefs = trendline.fit_trendlines_high_low(
-                window_high, window_low, window_close
-            )
-            
-            # Store slopes
-            s_slopes[i] = s_coefs[0]
-            r_slopes[i] = r_coefs[0]
-            
-            # Project trendlines to current bar
-            s_val = s_coefs[1] + lookback * s_coefs[0]
-            r_val = r_coefs[1] + lookback * r_coefs[0]
-            
-            s_tl[i] = s_val
-            r_tl[i] = r_val
-            
-            # Get current price and EMA
-            current_close = data.iloc[i]['Close']
-            current_ema = data.iloc[i]['EMA21']
-
-            # Average price condition
-            window_average = window_close.mean()
-            
-            # Long condition: price > EMA + negative resistance slope
-            if (window_average > current_ema) and (r_coefs[0] < 0) and (current_close > r_val):
-                signals[i] = 1.0
-                
-            # Short condition: price < EMA + positive resistance slope    
-            elif (window_average < current_ema) and (r_coefs[0] > 0) and (current_close < s_val):
-                signals[i] = -1.0
-                
-            else:
-                signals[i] = 0
-                
-        except Exception as e:
-            signals[i] = signals[i - 1]
-            continue
-    
-    return s_tl, r_tl, signals, data['EMA21'].to_numpy(), r_slopes, s_slopes
-
-def plot_chart(data, symbol, s_tl, r_tl, signals, ema):
+def plot_chart(data, symbol, signals_df):
     """Create an interactive chart with Plotly"""
+    # Calculate EMAs for the chart
+    data['ema'] = data['Close'].ewm(span=ema_period, adjust=False).mean()
+    data['ema_2'] = data['Close'].ewm(span=ema_period*2, adjust=False).mean()
+
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                        vertical_spacing=0.03, row_heights=[0.7, 0.3])
 
@@ -277,47 +231,42 @@ def plot_chart(data, symbol, s_tl, r_tl, signals, ema):
         row=1, col=1
     )
 
-    # Add trendlines
+    # Add EMAs
     fig.add_trace(
-        go.Scatter(x=data.index, y=s_tl, name='Support', line=dict(color='green', dash='dash')),
+        go.Scatter(x=data.index, y=data['ema'], name=f'EMA{ema_period}', line=dict(color='blue')),
         row=1, col=1
     )
     fig.add_trace(
-        go.Scatter(x=data.index, y=r_tl, name='Resistance', line=dict(color='red', dash='dash')),
-        row=1, col=1
-    )
-    
-    # Add EMA
-    fig.add_trace(
-        go.Scatter(x=data.index, y=ema, name=f'EMA{ema_period}', line=dict(color='blue')),
+        go.Scatter(x=data.index, y=data['ema_2'], name=f'EMA{ema_period*2}', line=dict(color='orange')),
         row=1, col=1
     )
 
     # Add signals
-    buy_signals = data[signals == 1].index
-    sell_signals = data[signals == -1].index
-    
-    fig.add_trace(
-        go.Scatter(
-            x=buy_signals,
-            y=data.loc[buy_signals, 'Low'],
-            name='Buy Signal',
-            mode='markers',
-            marker=dict(symbol='triangle-up', size=15, color='green'),
-        ),
-        row=1, col=1
-    )
-    
-    fig.add_trace(
-        go.Scatter(
-            x=sell_signals,
-            y=data.loc[sell_signals, 'High'],
-            name='Sell Signal',
-            mode='markers',
-            marker=dict(symbol='triangle-down', size=15, color='red'),
-        ),
-        row=1, col=1
-    )
+    if not signals_df.empty:
+        long_signals = signals_df[signals_df['type'] == 'long']
+        short_signals = signals_df[signals_df['type'] == 'short']
+        
+        fig.add_trace(
+            go.Scatter(
+                x=long_signals['index'],
+                y=long_signals['price'],
+                name='Long Signal',
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=15, color='green'),
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=short_signals['index'],
+                y=short_signals['price'],
+                name='Short Signal',
+                mode='markers',
+                marker=dict(symbol='triangle-down', size=15, color='red'),
+            ),
+            row=1, col=1
+        )
 
     # Volume bars
     fig.add_trace(
@@ -327,7 +276,7 @@ def plot_chart(data, symbol, s_tl, r_tl, signals, ema):
 
     # Update layout
     fig.update_layout(
-        title=f'{symbol} - Chart Pattern Analysis',
+        title=f'{symbol} - EMA Pullback Analysis',
         yaxis_title='Price',
         yaxis2_title='Volume',
         xaxis_rangeslider_visible=False,
@@ -352,18 +301,23 @@ if st.sidebar.button("Run Screening") or not st.session_state.has_run:
                 
                 for symbol in symbols:
                     symbol_data = st.session_state.market_data[symbol].copy()
-                    _, _, signals, _, _, _ = trendline_breakout_hl(
-                        symbol_data, lookback, ema_period
+                    _, signals_df = pullback.detect_precise_ema_pullback(
+                        symbol_data, 
+                        ema_period=ema_period,
+                        min_trend_bars=min_pullback_candles,
+                        breakout_threshold=breakout_threshold/100  # Convert percentage to decimal
                     )
                     
-                    last_signal = signals[-1]
-                    if last_signal != 0:
-                        signal_summary.append({
-                            'Symbol': symbol,
-                            'Signal': 'Buy' if last_signal == 1 else 'Sell',
-                            'Price': symbol_data['Close'].iloc[-1],
-                            'Volume': symbol_data['Volume'].iloc[-1]
-                        })
+                    if not signals_df.empty:
+                        # Get all signals for this symbol
+                        for _, signal in signals_df.iterrows():
+                            signal_summary.append({
+                                'Symbol': symbol,
+                                'Signal': 'Buy' if signal['type'] == 'long' else 'Sell',
+                                'Price': signal['price'],
+                                'Volume': symbol_data.loc[signal['index'], 'Volume'],
+                                'Date': signal['index']
+                            })
                 
                 st.session_state.signal_summary = signal_summary
 
@@ -377,37 +331,43 @@ tab1, tab2 = st.tabs(["Charts", "Signals Summary"])
 # Only show content if we have data
 if st.session_state.market_data is not None and st.session_state.signal_summary:
     with tab1:
-        # Create a list of symbols with active signals
-        active_symbols = [item['Symbol'] for item in st.session_state.signal_summary]
-        signal_types = {item['Symbol']: item['Signal'] for item in st.session_state.signal_summary}
+        # Create a list of symbols with any signals
+        active_symbols = list(set(item['Symbol'] for item in st.session_state.signal_summary))
         
-        # Add signal type to symbol display
-        symbol_options = [f"{symbol} ({signal_types[symbol]})" for symbol in active_symbols]
-        
-        # Symbol selector with signal information
-        selected_display = st.selectbox(
-            "Select Symbol (Showing only symbols with active signals)",
-            options=symbol_options,
-            format_func=lambda x: x
+        # Symbol selector
+        selected_symbol = st.selectbox(
+            "Select Symbol",
+            options=active_symbols,
+            help="Select a symbol to view its chart and signals"
         )
-        
-        # Extract symbol from display string
-        selected_symbol = selected_display.split(' (')[0]
         
         # Get data for selected symbol
         symbol_data = st.session_state.market_data[selected_symbol].copy()
         
-        # Calculate signals
-        s_tl, r_tl, signals, ema, r_slopes, s_slopes = trendline_breakout_hl(
-            symbol_data, lookback, ema_period
-        )
+        # Get signals for this symbol from the signal summary
+        symbol_signals = pd.DataFrame([
+            signal for signal in st.session_state.signal_summary 
+            if signal['Symbol'] == selected_symbol
+        ])
+        
+        # Convert to the format expected by plot_chart
+        if not symbol_signals.empty:
+            signals_df = pd.DataFrame({
+                'index': symbol_signals['Date'],
+                'type': symbol_signals['Signal'].map({'Buy': 'long', 'Sell': 'short'}),
+                'price': symbol_signals['Price']
+            })
+        else:
+            signals_df = pd.DataFrame()
         
         # Plot chart
-        fig = plot_chart(symbol_data, selected_symbol, s_tl, r_tl, signals, ema)
+        fig = plot_chart(symbol_data, selected_symbol, signals_df)
         st.plotly_chart(fig, use_container_width=True)
     
     with tab2:
         signals_df = pd.DataFrame(st.session_state.signal_summary)
+        # Sort by date in descending order
+        signals_df = signals_df.sort_values('Date', ascending=False)
         st.dataframe(
             signals_df.style.apply(
                 lambda x: ['background-color: lightgreen' if v == 'Buy' else 'background-color: lightcoral' for v in x],
